@@ -1,0 +1,154 @@
+generator client {
+  provider             = "prisma-client-py"
+  interface            = "sync"
+  recursive_type_depth = 5
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// SQLite no soporta enums nativos — los campos se almacenan como String.
+// La validación de valores permitidos la realiza Pydantic en los schemas.
+
+model Expediente {
+  id                     String  @id @default(uuid())
+  eudr_id                String? @unique
+  nombre_completo        String
+  cedula_id              String
+  organizacion           String?
+  celular                String?
+  genero                 String?
+  edad                   Int?
+  nombre_finca           String
+  provincia              String?
+  canton                 String?
+  parroquia              String?
+  barrio_sector          String?
+  area_total_ha          Float?
+  area_cultivada_ha      Float?
+  tenencia               String?
+  latitud                Float?
+  longitud               Float?
+  estado                 String   @default("PENDIENTE")
+  organizacion_inquilino String?
+  creado_en              DateTime @default(now())
+  actualizado_en         DateTime @updatedAt
+
+  datos_agroambientales  Dato[]
+  historial              Historial[]
+  auditorias             Auditoria[]
+  certificados           Certificado[]
+
+  @@map("expedientes")
+}
+
+model Dato {
+  id                     String     @id @default(uuid())
+  expediente_id          String
+  indice_shannon         Float?
+  indice_simpson         Float?
+  uso_suelo              String?
+  cobertura_forestal     String?
+  sistema_produccion     String?
+  biomasa_arboles        Float?
+  biomasa_cafe           Float?
+  hojarasca_mantillo     Float?
+  carbono_organico_suelo Float?
+  total_stock_carbono    Float?
+  creado_en              DateTime   @default(now())
+
+  expediente             Expediente @relation(fields: [expediente_id], references: [id], onDelete: Cascade)
+
+  @@map("datos_agroambientales")
+}
+
+model Historial {
+  id            String     @id @default(uuid())
+  expediente_id String
+  accion        String
+  descripcion   String?
+  usuario       String?
+  fecha         DateTime   @default(now())
+
+  expediente    Expediente @relation(fields: [expediente_id], references: [id], onDelete: Cascade)
+
+  @@map("historial_trazabilidad")
+}
+
+model Rol {
+  id          String   @id @default(uuid())
+  nombre      String   @unique
+  descripcion String?
+
+  usuarios    Usuario[]
+
+  @@map("roles")
+}
+
+model Usuario {
+  id            String   @id @default(uuid())
+  nombre        String
+  email         String   @unique
+  password_hash String
+  rol_id        String?
+  activo        Boolean  @default(true)
+  creado_en     DateTime @default(now())
+
+  rol           Rol?     @relation(fields: [rol_id], references: [id])
+  fincas        Finca[]
+
+  @@map("usuarios")
+}
+
+model Finca {
+  id                String   @id @default(uuid())
+  nombre            String
+  eudr_id           String?  @unique
+  provincia         String?
+  canton            String?
+  parroquia         String?
+  area_total_ha     Float?
+  area_cultivada_ha Float?
+  tenencia          String?
+  latitud           Float?
+  longitud          Float?
+  productor_id      String?
+  creado_en         DateTime @default(now())
+
+  productor         Usuario? @relation(fields: [productor_id], references: [id])
+
+  @@map("fincas")
+}
+
+model Auditoria {
+  id                      String   @id @default(uuid())
+  expediente_id           String
+  fecha_auditoria         DateTime @default(now())
+  resultado               String
+  deforestacion_detectada Boolean  @default(false)
+  fecha_corte             DateTime?
+  fuente                  String?  @default("Google Earth Engine")
+  observaciones           String?
+  ejecutado_por           String?
+
+  expediente              Expediente @relation(fields: [expediente_id], references: [id], onDelete: Cascade)
+
+  @@map("auditorias_gee")
+}
+
+model Certificado {
+  id                 String   @id @default(uuid())
+  expediente_id      String
+  codigo_certificado String   @unique
+  fecha_emision      DateTime @default(now())
+  fecha_vencimiento  DateTime?
+  estado             String   @default("VIGENTE")
+  generado_por       String?
+  url_documento      String?
+
+  expediente         Expediente @relation(fields: [expediente_id], references: [id], onDelete: Cascade)
+
+  @@map("certificados_dds")
+}

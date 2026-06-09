@@ -1,60 +1,66 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from prisma import Prisma
 from typing import List
-from uuid import UUID
 from app.database import get_db
-from app.models.models import AuditoriaGEE, Expediente, HistorialTrazabilidad, EstadoExpedienteEnum
+from app.security import get_current_user, require_roles
 from app.schemas.schemas import AuditoriaCreate, AuditoriaOut
 
 router = APIRouter()
 
 
 @router.get("/", response_model=List[AuditoriaOut], summary="Listar todas las auditorías GEE")
-def listar_auditorias(db: Session = Depends(get_db)):
-    return db.query(AuditoriaGEE).all()
+def listar_auditorias(
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+):
+    return db.auditoria.find_many()
 
 
 @router.post("/", response_model=AuditoriaOut, status_code=201, summary="Registrar resultado de auditoría GEE")
-def crear_auditoria(data: AuditoriaCreate, db: Session = Depends(get_db)):
-    exp = db.query(Expediente).filter(Expediente.id == data.expediente_id).first()
-    if not exp:
+def crear_auditoria(
+    data: AuditoriaCreate,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+):
+    if not db.expediente.find_first(where={"id": data.expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
 
-    auditoria = AuditoriaGEE(**data.model_dump())
-    db.add(auditoria)
-    db.flush()
+    # Usar sub del token si no se especificó ejecutado_por
+    create_data = data.model_dump()
+    create_data.setdefault("ejecutado_por", current_user.get("sub"))
 
-    # Actualizar estado del expediente según resultado
-    exp.estado = (
-        EstadoExpedienteEnum.aprobado
-        if data.resultado == "APROBADO"
-        else EstadoExpedienteEnum.rechazado
-    )
+    auditoria = db.auditoria.create(data=create_data)
 
-    # Registrar en historial de trazabilidad
-    historial = HistorialTrazabilidad(
-        expediente_id=data.expediente_id,
-        accion="Auditoría GEE ejecutada",
-        descripcion=f"Resultado: {data.resultado}. Deforestación detectada: {data.deforestacion_detectada}.",
-        usuario=data.ejecutado_por or "sistema"
-    )
-    db.add(historial)
-    db.commit()
-    db.refresh(auditoria)
+    nuevo_estado = "APROBADO" if data.resultado == "APROBADO" else "RECHAZADO"
+    db.expediente.update(where={"id": data.expediente_id}, data={"estado": nuevo_estado})
+
+    db.historial.create(data={
+        "expediente_id": data.expediente_id,
+        "accion": "Auditoría GEE ejecutada",
+        "descripcion": f"Resultado: {data.resultado}. Deforestación detectada: {data.deforestacion_detectada}.",
+        "usuario": current_user.get("sub", "sistema"),
+    })
     return auditoria
 
 
 @router.get("/expediente/{expediente_id}", response_model=List[AuditoriaOut], summary="Obtener auditorías de un expediente")
-def auditorias_por_expediente(expediente_id: UUID, db: Session = Depends(get_db)):
-    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
-    if not exp:
+def auditorias_por_expediente(
+    expediente_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
-    return db.query(AuditoriaGEE).filter(AuditoriaGEE.expediente_id == expediente_id).all()
+    return db.auditoria.find_many(where={"expediente_id": expediente_id})
 
 
 @router.get("/{auditoria_id}", response_model=AuditoriaOut, summary="Obtener auditoría por ID")
-def obtener_auditoria(auditoria_id: UUID, db: Session = Depends(get_db)):
-    auditoria = db.query(AuditoriaGEE).filter(AuditoriaGEE.id == auditoria_id).first()
+def obtener_auditoria(
+    auditoria_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    auditoria = db.auditoria.find_first(where={"id": auditoria_id})
     if not auditoria:
         raise HTTPException(status_code=404, detail="Auditoría no encontrada")
     return auditoria

@@ -1,71 +1,69 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from prisma import Prisma
 from typing import List
-from uuid import UUID
 from app.database import get_db
-from app.models.models import DatoAgroambiental, Expediente, HistorialTrazabilidad
+from app.security import get_current_user, require_roles
 from app.schemas.schemas import DatoAgroambientalCreate, DatoAgroambientalOut
 
 router = APIRouter()
 
+
 @router.get("/{expediente_id}", response_model=List[DatoAgroambientalOut], summary="Obtener datos agroambientales de un expediente")
-def obtener_datos(expediente_id: UUID, db: Session = Depends(get_db)):
-    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
-    if not exp:
+def obtener_datos(
+    expediente_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
-    return exp.datos_agroambientales
+    return db.dato.find_many(where={"expediente_id": expediente_id})
+
 
 @router.post("/{expediente_id}", response_model=DatoAgroambientalOut, status_code=201, summary="Agregar datos agroambientales")
-def crear_datos(expediente_id: UUID, data: DatoAgroambientalCreate, db: Session = Depends(get_db)):
-    exp = db.query(Expediente).filter(Expediente.id == expediente_id).first()
-    if not exp:
+def crear_datos(
+    expediente_id: str,
+    data: DatoAgroambientalCreate,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+):
+    if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
-
-    dato = DatoAgroambiental(expediente_id=expediente_id, **data.model_dump())
-    db.add(dato)
-
-    # Trazabilidad
-    historial = HistorialTrazabilidad(
-        expediente_id=expediente_id,
-        accion="Datos agroambientales registrados",
-        descripcion="Se registraron índices de biodiversidad, uso de suelo y stock de carbono.",
-        usuario="sistema"
-    )
-    db.add(historial)
-    db.commit()
-    db.refresh(dato)
+    dato = db.dato.create(data={"expediente_id": expediente_id, **data.model_dump()})
+    db.historial.create(data={
+        "expediente_id": expediente_id,
+        "accion": "Datos agroambientales registrados",
+        "descripcion": "Se registraron índices de biodiversidad, uso de suelo y stock de carbono.",
+        "usuario": current_user.get("sub", "sistema"),
+    })
     return dato
+
 
 @router.put("/{expediente_id}/{dato_id}", response_model=DatoAgroambientalOut, summary="Actualizar datos agroambientales")
-def actualizar_datos(expediente_id: UUID, dato_id: UUID, data: DatoAgroambientalCreate, db: Session = Depends(get_db)):
-    dato = db.query(DatoAgroambiental).filter(
-        DatoAgroambiental.id == dato_id,
-        DatoAgroambiental.expediente_id == expediente_id
-    ).first()
+def actualizar_datos(
+    expediente_id: str,
+    dato_id: str,
+    data: DatoAgroambientalCreate,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+):
+    dato = db.dato.find_first(where={"id": dato_id, "expediente_id": expediente_id})
     if not dato:
         raise HTTPException(status_code=404, detail="Dato agroambiental no encontrado")
+    return db.dato.update(where={"id": dato_id}, data=data.model_dump(exclude_unset=True))
 
-    for campo, valor in data.model_dump(exclude_unset=True).items():
-        setattr(dato, campo, valor)
-
-    db.commit()
-    db.refresh(dato)
-    return dato
 
 @router.get("/resumen/carbono", summary="Resumen de stock de carbono por expediente")
-def resumen_carbono(db: Session = Depends(get_db)):
-    """Retorna el total de carbono almacenado por finca - útil para reportes EUDR."""
-    resultados = db.query(
-        Expediente.nombre_finca,
-        Expediente.eudr_id,
-        DatoAgroambiental.total_stock_carbono
-    ).join(DatoAgroambiental).all()
-
+def resumen_carbono(
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+):
+    datos = db.dato.find_many(include={"expediente": True})
     return [
         {
-            "nombre_finca": r[0],
-            "eudr_id": r[1],
-            "total_stock_carbono_tC_ha": r[2]
+            "nombre_finca": d.expediente.nombre_finca,
+            "eudr_id": d.expediente.eudr_id,
+            "total_stock_carbono_tC_ha": d.total_stock_carbono,
         }
-        for r in resultados
+        for d in datos
+        if d.total_stock_carbono is not None
     ]

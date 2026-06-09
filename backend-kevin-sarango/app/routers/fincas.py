@@ -1,9 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
+from prisma import Prisma
 from typing import List, Optional
-from uuid import UUID
 from app.database import get_db
-from app.models.models import Finca
+from app.security import get_current_user, require_roles
 from app.schemas.schemas import FincaCreate, FincaOut, FincaUpdate
 
 router = APIRouter()
@@ -11,54 +10,59 @@ router = APIRouter()
 
 @router.get("/", response_model=List[FincaOut], summary="Listar fincas")
 def listar_fincas(
-    provincia: Optional[str] = Query(None, description="Filtrar por provincia"),
-    canton: Optional[str] = Query(None, description="Filtrar por cantón"),
-    db: Session = Depends(get_db)
+    provincia: Optional[str] = Query(None),
+    canton: Optional[str] = Query(None),
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
 ):
-    query = db.query(Finca)
+    where: dict = {}
     if provincia:
-        query = query.filter(Finca.provincia == provincia)
+        where["provincia"] = provincia
     if canton:
-        query = query.filter(Finca.canton == canton)
-    return query.all()
+        where["canton"] = canton
+    return db.finca.find_many(where=where)
 
 
 @router.post("/", response_model=FincaOut, status_code=201, summary="Crear nueva finca")
-def crear_finca(data: FincaCreate, db: Session = Depends(get_db)):
-    finca = Finca(**data.model_dump())
-    db.add(finca)
-    db.commit()
-    db.refresh(finca)
-    return finca
+def crear_finca(
+    data: FincaCreate,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    return db.finca.create(data=data.model_dump())
 
 
 @router.get("/{finca_id}", response_model=FincaOut, summary="Obtener finca por ID")
-def obtener_finca(finca_id: UUID, db: Session = Depends(get_db)):
-    finca = db.query(Finca).filter(Finca.id == finca_id).first()
+def obtener_finca(
+    finca_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    finca = db.finca.find_first(where={"id": finca_id})
     if not finca:
         raise HTTPException(status_code=404, detail="Finca no encontrada")
     return finca
 
 
 @router.patch("/{finca_id}", response_model=FincaOut, summary="Actualizar datos de la finca")
-def actualizar_finca(finca_id: UUID, data: FincaUpdate, db: Session = Depends(get_db)):
-    finca = db.query(Finca).filter(Finca.id == finca_id).first()
-    if not finca:
+def actualizar_finca(
+    finca_id: str,
+    data: FincaUpdate,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+):
+    if not db.finca.find_first(where={"id": finca_id}):
         raise HTTPException(status_code=404, detail="Finca no encontrada")
-
-    for campo, valor in data.model_dump(exclude_unset=True).items():
-        setattr(finca, campo, valor)
-
-    db.commit()
-    db.refresh(finca)
-    return finca
+    return db.finca.update(where={"id": finca_id}, data=data.model_dump(exclude_unset=True))
 
 
 @router.delete("/{finca_id}", summary="Eliminar finca")
-def eliminar_finca(finca_id: UUID, db: Session = Depends(get_db)):
-    finca = db.query(Finca).filter(Finca.id == finca_id).first()
-    if not finca:
+def eliminar_finca(
+    finca_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN")),
+):
+    if not db.finca.find_first(where={"id": finca_id}):
         raise HTTPException(status_code=404, detail="Finca no encontrada")
-    db.delete(finca)
-    db.commit()
+    db.finca.delete(where={"id": finca_id})
     return {"message": "Finca eliminada correctamente"}

@@ -1,42 +1,46 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
-from uuid import UUID
 from enum import Enum
 
-# ─── Enums existentes ─────────────────────────────────────────
+
+# ─── Enums (valores alineados con Prisma) ────────────────────
 
 class TenenciaEnum(str, Enum):
-    propia = "Propia con escritura"
-    posesion = "Posesión de hecho / Sin título"
-    arrendamiento = "Arrendamiento legal"
+    PROPIA = "PROPIA"
+    POSESION = "POSESION"
+    ARRENDAMIENTO = "ARRENDAMIENTO"
+
 
 class GeneroEnum(str, Enum):
-    masculino = "Masculino"
-    femenino = "Femenino"
-    otro = "Otro / Prefiero no decir"
+    MASCULINO = "MASCULINO"
+    FEMENINO = "FEMENINO"
+    OTRO = "OTRO"
+
 
 class EstadoEnum(str, Enum):
-    pendiente = "Pendiente"
-    en_proceso = "En Proceso"
-    aprobado = "Aprobado"
-    rechazado = "Rechazado"
+    PENDIENTE = "PENDIENTE"
+    EN_PROCESO = "EN_PROCESO"
+    APROBADO = "APROBADO"
+    RECHAZADO = "RECHAZADO"
 
-# ─── Enums nuevos ─────────────────────────────────────────────
 
 class RolNombreEnum(str, Enum):
-    admin = "ADMIN"
-    auditor = "AUDITOR"
-    cliente = "CLIENTE"
+    ADMIN = "ADMIN"
+    AUDITOR = "AUDITOR"
+    CLIENTE = "CLIENTE"
+
 
 class ResultadoAuditoriaEnum(str, Enum):
-    aprobado = "APROBADO"
-    rechazado = "RECHAZADO"
+    APROBADO = "APROBADO"
+    RECHAZADO = "RECHAZADO"
+
 
 class EstadoCertificadoEnum(str, Enum):
-    vigente = "VIGENTE"
-    vencido = "VENCIDO"
-    revocado = "REVOCADO"
+    VIGENTE = "VIGENTE"
+    VENCIDO = "VENCIDO"
+    REVOCADO = "REVOCADO"
+
 
 # ─── Agroambiental ───────────────────────────────────────────
 
@@ -52,16 +56,19 @@ class DatoAgroambientalBase(BaseModel):
     carbono_organico_suelo: Optional[float] = None
     total_stock_carbono: Optional[float] = None
 
+
 class DatoAgroambientalCreate(DatoAgroambientalBase):
     pass
 
+
 class DatoAgroambientalOut(DatoAgroambientalBase):
-    id: UUID
-    expediente_id: UUID
+    id: str
+    expediente_id: str
     creado_en: datetime
 
     class Config:
         from_attributes = True
+
 
 # ─── Historial / Trazabilidad ────────────────────────────────
 
@@ -70,18 +77,20 @@ class HistorialCreate(BaseModel):
     descripcion: Optional[str] = None
     usuario: Optional[str] = None
 
+
 class HistorialOut(HistorialCreate):
-    id: UUID
-    expediente_id: UUID
+    id: str
+    expediente_id: str
     fecha: datetime
 
     class Config:
         from_attributes = True
 
+
 # ─── Expediente ──────────────────────────────────────────────
 
 class ExpedienteBase(BaseModel):
-    nombre_completo: str = Field(..., example="José Miguel Moosquera")
+    nombre_completo: str = Field(..., example="José Miguel Mosquera")
     cedula_id: str = Field(..., example="1100433455")
     organizacion: Optional[str] = Field(None, example="Asociación APECAEL")
     celular: Optional[str] = None
@@ -101,8 +110,10 @@ class ExpedienteBase(BaseModel):
     longitud: Optional[float] = Field(None, example=-79.2231)
     organizacion_inquilino: Optional[str] = None
 
+
 class ExpedienteCreate(ExpedienteBase):
     datos_agroambientales: Optional[DatoAgroambientalCreate] = None
+
 
 class ExpedienteUpdate(BaseModel):
     estado: Optional[EstadoEnum] = None
@@ -111,10 +122,11 @@ class ExpedienteUpdate(BaseModel):
     latitud: Optional[float] = None
     longitud: Optional[float] = None
 
+
 class ExpedienteOut(ExpedienteBase):
-    id: UUID
-    eudr_id: str
-    estado: EstadoEnum
+    id: str
+    eudr_id: Optional[str] = None
+    estado: str
     creado_en: datetime
     actualizado_en: datetime
     datos_agroambientales: List[DatoAgroambientalOut] = []
@@ -123,19 +135,22 @@ class ExpedienteOut(ExpedienteBase):
     class Config:
         from_attributes = True
 
+
 # ─── Rol ─────────────────────────────────────────────────────
 
 class RolCreate(BaseModel):
     nombre: RolNombreEnum
     descripcion: Optional[str] = None
 
+
 class RolOut(BaseModel):
-    id: UUID
-    nombre: RolNombreEnum
+    id: str
+    nombre: str
     descripcion: Optional[str] = None
 
     class Config:
         from_attributes = True
+
 
 # ─── Usuario ─────────────────────────────────────────────────
 
@@ -143,22 +158,25 @@ class UsuarioCreate(BaseModel):
     nombre: str
     email: str
     password: str
-    rol_id: Optional[UUID] = None
+    rol_id: Optional[str] = None
+
 
 class UsuarioOut(BaseModel):
-    id: UUID
+    id: str
     nombre: str
     email: str
-    rol_id: Optional[UUID] = None
+    rol_id: Optional[str] = None
     activo: bool
     creado_en: datetime
 
     class Config:
         from_attributes = True
 
+
 class UsuarioUpdate(BaseModel):
     activo: Optional[bool] = None
-    rol_id: Optional[UUID] = None
+    rol_id: Optional[str] = None
+
 
 # ─── Finca ───────────────────────────────────────────────────
 
@@ -173,14 +191,16 @@ class FincaCreate(BaseModel):
     tenencia: Optional[TenenciaEnum] = None
     latitud: Optional[float] = None
     longitud: Optional[float] = None
-    productor_id: Optional[UUID] = None
+    productor_id: Optional[str] = None
+
 
 class FincaOut(FincaCreate):
-    id: UUID
+    id: str
     creado_en: datetime
 
     class Config:
         from_attributes = True
+
 
 class FincaUpdate(BaseModel):
     nombre: Optional[str] = None
@@ -193,10 +213,11 @@ class FincaUpdate(BaseModel):
     latitud: Optional[float] = None
     longitud: Optional[float] = None
 
+
 # ─── AuditoriaGEE ────────────────────────────────────────────
 
 class AuditoriaCreate(BaseModel):
-    expediente_id: UUID
+    expediente_id: str
     resultado: ResultadoAuditoriaEnum
     deforestacion_detectada: bool = False
     fecha_corte: Optional[datetime] = None
@@ -204,11 +225,12 @@ class AuditoriaCreate(BaseModel):
     observaciones: Optional[str] = None
     ejecutado_por: Optional[str] = None
 
+
 class AuditoriaOut(BaseModel):
-    id: UUID
-    expediente_id: UUID
+    id: str
+    expediente_id: str
     fecha_auditoria: datetime
-    resultado: ResultadoAuditoriaEnum
+    resultado: str
     deforestacion_detectada: bool
     fecha_corte: Optional[datetime] = None
     fuente: Optional[str] = None
@@ -218,21 +240,23 @@ class AuditoriaOut(BaseModel):
     class Config:
         from_attributes = True
 
+
 # ─── CertificadoDDS ──────────────────────────────────────────
 
 class CertificadoCreate(BaseModel):
-    expediente_id: UUID
+    expediente_id: str
     fecha_vencimiento: Optional[datetime] = None
     generado_por: Optional[str] = None
     url_documento: Optional[str] = None
 
+
 class CertificadoOut(BaseModel):
-    id: UUID
-    expediente_id: UUID
+    id: str
+    expediente_id: str
     codigo_certificado: str
     fecha_emision: datetime
     fecha_vencimiento: Optional[datetime] = None
-    estado: EstadoCertificadoEnum
+    estado: str
     generado_por: Optional[str] = None
     url_documento: Optional[str] = None
 

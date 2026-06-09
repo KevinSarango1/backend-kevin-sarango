@@ -1,45 +1,51 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from prisma import Prisma
 from typing import List
-from uuid import UUID
 from app.database import get_db
-from app.models.models import Rol
+from app.security import get_current_user, require_roles
 from app.schemas.schemas import RolCreate, RolOut
 
 router = APIRouter()
 
 
 @router.get("/", response_model=List[RolOut], summary="Listar todos los roles")
-def listar_roles(db: Session = Depends(get_db)):
-    return db.query(Rol).all()
+def listar_roles(
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    return db.rol.find_many()
 
 
 @router.post("/", response_model=RolOut, status_code=201, summary="Crear nuevo rol")
-def crear_rol(data: RolCreate, db: Session = Depends(get_db)):
-    existente = db.query(Rol).filter(Rol.nombre == data.nombre).first()
-    if existente:
+def crear_rol(
+    data: RolCreate,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN")),
+):
+    if db.rol.find_first(where={"nombre": data.nombre}):
         raise HTTPException(status_code=400, detail="El rol ya existe")
-
-    rol = Rol(**data.model_dump())
-    db.add(rol)
-    db.commit()
-    db.refresh(rol)
-    return rol
+    return db.rol.create(data=data.model_dump())
 
 
 @router.get("/{rol_id}", response_model=RolOut, summary="Obtener rol por ID")
-def obtener_rol(rol_id: UUID, db: Session = Depends(get_db)):
-    rol = db.query(Rol).filter(Rol.id == rol_id).first()
+def obtener_rol(
+    rol_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(get_current_user),
+):
+    rol = db.rol.find_first(where={"id": rol_id})
     if not rol:
         raise HTTPException(status_code=404, detail="Rol no encontrado")
     return rol
 
 
 @router.delete("/{rol_id}", summary="Eliminar rol")
-def eliminar_rol(rol_id: UUID, db: Session = Depends(get_db)):
-    rol = db.query(Rol).filter(Rol.id == rol_id).first()
-    if not rol:
+def eliminar_rol(
+    rol_id: str,
+    db: Prisma = Depends(get_db),
+    current_user: dict = Depends(require_roles("ADMIN")),
+):
+    if not db.rol.find_first(where={"id": rol_id}):
         raise HTTPException(status_code=404, detail="Rol no encontrado")
-    db.delete(rol)
-    db.commit()
+    db.rol.delete(where={"id": rol_id})
     return {"message": "Rol eliminado correctamente"}
