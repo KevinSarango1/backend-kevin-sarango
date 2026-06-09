@@ -1,14 +1,20 @@
 from fastapi import APIRouter, Depends, HTTPException
 from prisma import Prisma
 from typing import List
-from passlib.context import CryptContext
+import bcrypt
 from app.database import get_db
 from app.security import require_roles
 from app.schemas.schemas import UsuarioCreate, UsuarioOut, UsuarioUpdate
 
 router = APIRouter()
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode()
+
+
+def _verify_password(password: str, hashed: str) -> bool:
+    return bcrypt.checkpw(password.encode(), hashed.encode())
 
 # Todos los endpoints de usuarios son exclusivos del ADMIN
 _admin = Depends(require_roles("ADMIN"))
@@ -26,7 +32,7 @@ def crear_usuario(data: UsuarioCreate, db: Prisma = Depends(get_db), current_use
     return db.usuario.create(data={
         "nombre": data.nombre,
         "email": data.email,
-        "password_hash": pwd_context.hash(data.password),
+        "password_hash": _hash_password(data.password),
         "rol_id": data.rol_id,
     })
 
