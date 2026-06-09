@@ -33,7 +33,7 @@ def generar_certificado(
             detail="El expediente requiere una auditoría GEE con resultado APROBADO para emitir el certificado",
         )
 
-    generado_por = data.generado_por or current_user.get("sub", "sistema")
+    generado_por = data.generado_por if data.generado_por else current_user.get("sub", "sistema")
     codigo = f"DDS-{datetime.utcnow().year}-{uuid4().hex[:8].upper()}"
 
     certificado = db.certificado.create(data={

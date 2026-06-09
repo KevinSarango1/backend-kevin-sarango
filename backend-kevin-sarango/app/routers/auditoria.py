@@ -27,7 +27,8 @@ def crear_auditoria(
 
     # Usar sub del token si no se especificó ejecutado_por
     create_data = data.model_dump()
-    create_data.setdefault("ejecutado_por", current_user.get("sub"))
+    if not create_data.get("ejecutado_por"):
+        create_data["ejecutado_por"] = current_user.get("sub")
 
     auditoria = db.auditoria.create(data=create_data)
 
