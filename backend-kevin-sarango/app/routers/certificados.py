@@ -13,7 +13,7 @@ router = APIRouter()
 @router.get("/", response_model=List[CertificadoOut], summary="Listar todos los certificados DDS")
 def listar_certificados(
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "AUDITOR_INTERNO")),
 ):
     return db.certificado.find_many()
 
@@ -22,7 +22,7 @@ def listar_certificados(
 def generar_certificado(
     data: CertificadoCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "AUDITOR_INTERNO")),
 ):
     if not db.expediente.find_first(where={"id": data.expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -77,7 +77,7 @@ def obtener_certificado(
 def revocar_certificado(
     certificado_id: str,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN")),
 ):
     if not db.certificado.find_first(where={"id": certificado_id}):
         raise HTTPException(status_code=404, detail="Certificado no encontrado")

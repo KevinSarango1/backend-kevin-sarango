@@ -25,9 +25,12 @@ class EstadoEnum(str, Enum):
 
 
 class RolNombreEnum(str, Enum):
-    ADMIN = "ADMIN"
-    AUDITOR = "AUDITOR"
+    SUPER_ADMIN = "SUPER_ADMIN"
+    TENANT_ADMIN = "TENANT_ADMIN"
     CLIENTE = "CLIENTE"
+    TECNICO_CAMPO = "TECNICO_CAMPO"
+    AUDITOR_INTERNO = "AUDITOR_INTERNO"
+    AUDITOR_EXTERNO = "AUDITOR_EXTERNO"
 
 
 class ResultadoAuditoriaEnum(str, Enum):

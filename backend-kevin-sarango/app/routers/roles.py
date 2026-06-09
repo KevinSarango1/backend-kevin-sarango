@@ -20,7 +20,7 @@ def listar_roles(
 def crear_rol(
     data: RolCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN")),
 ):
     if db.rol.find_first(where={"nombre": data.nombre}):
         raise HTTPException(status_code=400, detail="El rol ya existe")
@@ -43,7 +43,7 @@ def obtener_rol(
 def eliminar_rol(
     rol_id: str,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN")),
 ):
     if not db.rol.find_first(where={"id": rol_id}):
         raise HTTPException(status_code=404, detail="Rol no encontrado")

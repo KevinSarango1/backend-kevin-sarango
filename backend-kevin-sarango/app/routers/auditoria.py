@@ -11,7 +11,7 @@ router = APIRouter()
 @router.get("/", response_model=List[AuditoriaOut], summary="Listar todas las auditorías GEE")
 def listar_auditorias(
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "AUDITOR_INTERNO")),
 ):
     return db.auditoria.find_many()
 
@@ -20,7 +20,7 @@ def listar_auditorias(
 def crear_auditoria(
     data: AuditoriaCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "AUDITOR_INTERNO")),
 ):
     if not db.expediente.find_first(where={"id": data.expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")

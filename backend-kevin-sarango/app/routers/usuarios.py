@@ -17,7 +17,7 @@ def _verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode(), hashed.encode())
 
 # Todos los endpoints de usuarios son exclusivos del ADMIN
-_admin = Depends(require_roles("ADMIN"))
+_admin = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN"))
 
 
 @router.get("/", response_model=List[UsuarioOut], summary="Listar todos los usuarios")

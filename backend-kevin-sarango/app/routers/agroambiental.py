@@ -24,7 +24,7 @@ def crear_datos(
     expediente_id: str,
     data: DatoAgroambientalCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO", "AUDITOR_INTERNO")),
 ):
     if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -44,7 +44,7 @@ def actualizar_datos(
     dato_id: str,
     data: DatoAgroambientalCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO", "AUDITOR_INTERNO")),
 ):
     dato = db.dato.find_first(where={"id": dato_id, "expediente_id": expediente_id})
     if not dato:
@@ -55,7 +55,7 @@ def actualizar_datos(
 @router.get("/resumen/carbono", summary="Resumen de stock de carbono por expediente")
 def resumen_carbono(
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO", "AUDITOR_INTERNO")),
 ):
     datos = db.dato.find_many(include={"expediente": True})
     return [

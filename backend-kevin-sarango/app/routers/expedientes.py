@@ -39,7 +39,7 @@ def listar_expedientes(
 def crear_expediente(
     data: ExpedienteCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO")),
 ):
     dato_nested = data.datos_agroambientales
     create_data = data.model_dump(exclude={"datos_agroambientales"})
@@ -85,7 +85,7 @@ def actualizar_expediente(
     expediente_id: str,
     data: ExpedienteUpdate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO")),
 ):
     if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -104,7 +104,7 @@ def actualizar_expediente(
 def eliminar_expediente(
     expediente_id: str,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN")),
 ):
     if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
@@ -130,7 +130,7 @@ def agregar_historial(
     expediente_id: str,
     data: HistorialCreate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO")),
 ):
     if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")

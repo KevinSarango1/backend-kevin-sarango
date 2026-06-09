@@ -49,7 +49,7 @@ def actualizar_finca(
     finca_id: str,
     data: FincaUpdate,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN", "AUDITOR")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN", "TECNICO_CAMPO")),
 ):
     if not db.finca.find_first(where={"id": finca_id}):
         raise HTTPException(status_code=404, detail="Finca no encontrada")
@@ -60,7 +60,7 @@ def actualizar_finca(
 def eliminar_finca(
     finca_id: str,
     db: Prisma = Depends(get_db),
-    current_user: dict = Depends(require_roles("ADMIN")),
+    current_user: dict = Depends(require_roles("SUPER_ADMIN", "TENANT_ADMIN")),
 ):
     if not db.finca.find_first(where={"id": finca_id}):
         raise HTTPException(status_code=404, detail="Finca no encontrada")

@@ -194,8 +194,19 @@ Roles del sistema para RBAC.
 | Campo | Tipo | Descripción |
 |---|---|---|
 | `id` | String (UUID) | Clave primaria |
-| `nombre` | String (único) | `ADMIN` / `AUDITOR` / `CLIENTE` |
+| `nombre` | String (único) | Ver tabla de roles abajo |
 | `descripcion` | String? | Descripción del rol |
+
+**Roles disponibles:**
+
+| Rol | Descripción |
+|---|---|
+| `SUPER_ADMIN` | Administrador global del sistema — acceso total |
+| `TENANT_ADMIN` | Administrador de organización/inquilino — gestiona su propio entorno |
+| `CLIENTE` | Usuario final — solo lectura |
+| `TECNICO_CAMPO` | Operario que registra expedientes y datos agroambientales en campo |
+| `AUDITOR_INTERNO` | Analista que ejecuta y revisa auditorías GEE y genera certificados |
+| `AUDITOR_EXTERNO` | Autoridad europea / organismo regulador — solo lectura de auditorías |
 
 ---
 
@@ -316,18 +327,17 @@ def require_roles(*allowed: str):
 
 ### Tabla de permisos por endpoint
 
-| Recurso | GET (listar/leer) | POST (crear) | PATCH/PUT | DELETE |
+| Recurso | GET (listar/leer) | POST (crear) | PATCH/PUT | DELETE / Revocar |
 |---|---|---|---|---|
-| Expedientes | Cualquier token | ADMIN, AUDITOR | ADMIN, AUDITOR | ADMIN |
-| Agroambiental | Cualquier token | ADMIN, AUDITOR | ADMIN, AUDITOR | — |
-| Usuarios | ADMIN | ADMIN | ADMIN | ADMIN |
-| Roles | Cualquier token | ADMIN | — | ADMIN |
-| Fincas | Cualquier token | Cualquier token | ADMIN, AUDITOR | ADMIN |
-| Auditoría GEE | ADMIN, AUDITOR* | ADMIN, AUDITOR | — | — |
-| Certificados DDS | ADMIN, AUDITOR* | ADMIN, AUDITOR | — | — |
+| Expedientes | Cualquier token | SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO | SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO | SUPER_ADMIN, TENANT_ADMIN |
+| Agroambiental | Cualquier token | SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO, AUDITOR_INTERNO | SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO, AUDITOR_INTERNO | — |
+| Usuarios | SUPER_ADMIN, TENANT_ADMIN | SUPER_ADMIN, TENANT_ADMIN | SUPER_ADMIN, TENANT_ADMIN | SUPER_ADMIN, TENANT_ADMIN |
+| Roles | Cualquier token | SUPER_ADMIN | — | SUPER_ADMIN |
+| Fincas | Cualquier token | Cualquier token | SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO | SUPER_ADMIN, TENANT_ADMIN |
+| Auditoría GEE | SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO, AUDITOR_EXTERNO* | SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO | — | — |
+| Certificados DDS | SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO, AUDITOR_EXTERNO* | SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO | — | SUPER_ADMIN, TENANT_ADMIN |
 
-> *El GET por ID o por expediente está abierto a cualquier token autenticado.  
-> *Revocar certificado: solo ADMIN.
+> *GET por ID o por expediente está abierto a cualquier token autenticado.
 
 ---
 
@@ -335,6 +345,15 @@ def require_roles(*allowed: str):
 
 **Base URL:** `http://localhost:8000/api/v1`  
 **Documentación interactiva:** `http://localhost:8000/docs`
+
+> Todos los endpoints requieren header `Authorization: Bearer <token>`. Los códigos de error comunes a **todos los endpoints** son:
+>
+> | Código | Causa |
+> |---|---|
+> | `401 Unauthorized` | Token ausente, mal formado o expirado |
+> | `403 Forbidden` | Token válido pero el rol no tiene permiso |
+> | `422 Unprocessable Entity` | Error de validación Pydantic (campo requerido faltante, valor de enum inválido, tipo incorrecto) |
+> | `500 Internal Server Error` | Error interno no controlado del servidor |
 
 ---
 
@@ -345,10 +364,20 @@ def require_roles(*allowed: str):
 #### `GET /`
 Lista todos los expedientes. Soporta filtros por query params.
 
-**Auth:** cualquier token  
+**Auth:** cualquier token autenticado  
 **Query params opcionales:**
 - `estado` — filtra por estado (`PENDIENTE`, `APROBADO`, etc.)
 - `organizacion` — filtra por `organizacion_inquilino`
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de expedientes (puede ser vacía `[]`) |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `422 Unprocessable Entity` | Query param con valor inválido |
+| `500 Internal Server Error` | Error de conexión con la base de datos |
 
 **Respuesta 200:**
 ```json
@@ -370,7 +399,7 @@ Lista todos los expedientes. Soporta filtros por query params.
 #### `POST /`
 Crea un nuevo expediente. Genera `eudr_id` automáticamente y registra el primer evento en el historial.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO
 
 **Body:**
 ```json
@@ -392,30 +421,56 @@ Crea un nuevo expediente. Genera `eudr_id` automáticamente y registra el primer
 }
 ```
 
-**Respuesta 201:** objeto `ExpedienteOut` completo con historial y datos agroambientales.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Expediente creado exitosamente con historial y datos incluidos |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, AUDITOR_EXTERNO) |
+| `422 Unprocessable Entity` | `nombre_completo`, `cedula_id` o `nombre_finca` faltantes; `genero` o `tenencia` con valor inválido |
+| `500 Internal Server Error` | Error al crear el registro en la base de datos |
 
 ---
 
 #### `GET /eudr/{eudr_id}`
 Busca un expediente por su código EUDR.
 
-**Auth:** cualquier token  
-**Respuesta 200:** objeto `ExpedienteOut` | **404** si no existe.
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Expediente encontrado |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | No existe expediente con ese `eudr_id` |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `GET /{expediente_id}`
 Obtiene un expediente por UUID.
 
-**Auth:** cualquier token  
-**Respuesta 200:** objeto `ExpedienteOut` | **404** si no existe.
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Expediente encontrado con historial y datos agroambientales |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | No existe expediente con ese UUID |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `PATCH /{expediente_id}`
 Actualiza campos del expediente y registra el cambio en el historial.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO
 
 **Body (campos opcionales):**
 ```json
@@ -428,30 +483,57 @@ Actualiza campos del expediente y registra el cambio en el historial.
 }
 ```
 
-**Respuesta 200:** objeto `ExpedienteOut` actualizado.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Expediente actualizado, historial registrado |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, AUDITOR_INTERNO) |
+| `404 Not Found` | No existe expediente con ese UUID |
+| `422 Unprocessable Entity` | Valor de `estado` fuera del enum permitido |
+| `500 Internal Server Error` | Error al actualizar |
 
 ---
 
 #### `DELETE /{expediente_id}`
 Elimina un expediente y todos sus registros relacionados (cascade).
 
-**Auth:** ADMIN  
-**Respuesta 200:** `{"message": "Expediente eliminado"}`
+**Auth:** SUPER_ADMIN, TENANT_ADMIN
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | `{"message": "Expediente eliminado"}` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (solo SUPER_ADMIN y TENANT_ADMIN) |
+| `404 Not Found` | No existe expediente con ese UUID |
+| `500 Internal Server Error` | Error al eliminar (ej: constraints FK) |
 
 ---
 
 #### `GET /{expediente_id}/historial`
 Lista el historial de trazabilidad de un expediente.
 
-**Auth:** cualquier token  
-**Respuesta 200:** lista de `HistorialOut`
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de eventos ordenados cronológicamente |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Expediente no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `POST /{expediente_id}/historial`
 Agrega un evento manual al historial.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO
 
 **Body:**
 ```json
@@ -460,6 +542,17 @@ Agrega un evento manual al historial.
   "descripcion": "Se verificó la finca in situ"
 }
 ```
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Evento registrado en el historial |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `404 Not Found` | Expediente no encontrado |
+| `422 Unprocessable Entity` | Campo `accion` faltante |
+| `500 Internal Server Error` | Error al crear el evento |
 
 ---
 
@@ -470,15 +563,24 @@ Agrega un evento manual al historial.
 #### `GET /{expediente_id}`
 Lista los datos agroambientales de un expediente.
 
-**Auth:** cualquier token  
-**Respuesta 200:** lista de `DatoAgroambientalOut`
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de registros agroambientales (puede ser vacía) |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Expediente no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `POST /{expediente_id}`
 Agrega un nuevo registro de datos agroambientales. Registra automáticamente un evento en el historial.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO, AUDITOR_INTERNO
 
 **Body:**
 ```json
@@ -493,20 +595,50 @@ Agrega un nuevo registro de datos agroambientales. Registra automáticamente un 
 }
 ```
 
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Datos registrados y evento en historial creado |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, AUDITOR_EXTERNO) |
+| `404 Not Found` | Expediente no encontrado |
+| `422 Unprocessable Entity` | Tipo de dato incorrecto (ej: string en campo Float) |
+| `500 Internal Server Error` | Error al persistir los datos |
+
 ---
 
 #### `PUT /{expediente_id}/{dato_id}`
 Actualiza un registro de datos agroambientales existente.
 
-**Auth:** ADMIN, AUDITOR  
-**Body:** mismos campos que POST (todos opcionales).
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO, AUDITOR_INTERNO
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Datos actualizados |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `404 Not Found` | Dato agroambiental no encontrado para ese expediente |
+| `422 Unprocessable Entity` | Tipo de dato incorrecto |
+| `500 Internal Server Error` | Error al actualizar |
 
 ---
 
 #### `GET /resumen/carbono`
 Resumen consolidado del stock de carbono por finca.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO, AUDITOR_EXTERNO
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista con nombre_finca, eudr_id y total_stock_carbono_tC_ha |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, TECNICO_CAMPO) |
+| `500 Internal Server Error` | Error al consultar los datos |
 
 **Respuesta 200:**
 ```json
@@ -524,12 +656,19 @@ Resumen consolidado del stock de carbono por finca.
 ### 6.3 Usuarios
 
 **Prefijo:** `/api/v1/usuarios`  
-**Todos los endpoints requieren rol ADMIN.**
+**Todos los endpoints requieren rol SUPER_ADMIN o TENANT_ADMIN.**
 
 #### `GET /`
 Lista todos los usuarios del sistema.
 
-**Respuesta 200:** lista de `UsuarioOut` (sin `password_hash`).
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de usuarios sin `password_hash` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
@@ -546,15 +685,31 @@ Crea un nuevo usuario. La contraseña se hashea con bcrypt antes de almacenarse.
 }
 ```
 
-**Respuesta 201:** objeto `UsuarioOut`  
-**400** si el email ya está registrado.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Usuario creado con `activo = true` |
+| `400 Bad Request` | El email ya está registrado en el sistema |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `422 Unprocessable Entity` | `nombre`, `email` o `password` faltantes |
+| `500 Internal Server Error` | Error al crear el usuario |
 
 ---
 
 #### `GET /{usuario_id}`
 Obtiene un usuario por ID.
 
-**Respuesta 200:** `UsuarioOut` | **404** si no existe.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Datos del usuario sin `password_hash` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `404 Not Found` | Usuario no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
@@ -569,12 +724,31 @@ Actualiza el rol o estado activo de un usuario.
 }
 ```
 
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Usuario actualizado |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `404 Not Found` | Usuario no encontrado |
+| `422 Unprocessable Entity` | Tipo de dato incorrecto en `activo` |
+| `500 Internal Server Error` | Error al actualizar |
+
 ---
 
 #### `DELETE /{usuario_id}`
 **Soft delete** — desactiva el usuario (`activo = false`) sin eliminar el registro.
 
-**Respuesta 200:** `{"message": "Usuario desactivado correctamente"}`
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | `{"message": "Usuario desactivado correctamente"}` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `404 Not Found` | Usuario no encontrado |
+| `500 Internal Server Error` | Error al actualizar el registro |
 
 ---
 
@@ -583,44 +757,78 @@ Actualiza el rol o estado activo de un usuario.
 **Prefijo:** `/api/v1/roles`
 
 #### `GET /`
-Lista todos los roles.
+Lista todos los roles del sistema.
 
-**Auth:** cualquier token  
-**Respuesta 200:** lista de `RolOut`
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de roles |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `GET /{rol_id}`
 Obtiene un rol por ID.
 
-**Auth:** cualquier token  
-**Respuesta 200:** `RolOut` | **404** si no existe.
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Datos del rol |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Rol no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `POST /`
 Crea un nuevo rol.
 
-**Auth:** ADMIN
+**Auth:** SUPER_ADMIN
 
 **Body:**
 ```json
 {
-  "nombre": "AUDITOR",
-  "descripcion": "Auditor GEE del sistema"
+  "nombre": "AUDITOR_INTERNO",
+  "descripcion": "Auditor GEE interno del sistema"
 }
 ```
 
-**Respuesta 201:** `RolOut`  
-**400** si el nombre ya existe.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Rol creado exitosamente |
+| `400 Bad Request` | Ya existe un rol con ese nombre |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Solo SUPER_ADMIN puede crear roles |
+| `422 Unprocessable Entity` | `nombre` fuera del enum `RolNombreEnum` |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `DELETE /{rol_id}`
 Elimina un rol.
 
-**Auth:** ADMIN  
-**Respuesta 200:** `{"message": "Rol eliminado correctamente"}`
+**Auth:** SUPER_ADMIN
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | `{"message": "Rol eliminado correctamente"}` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Solo SUPER_ADMIN puede eliminar roles |
+| `404 Not Found` | Rol no encontrado |
+| `500 Internal Server Error` | Error al eliminar (ej: rol asignado a usuarios) |
 
 ---
 
@@ -631,14 +839,23 @@ Elimina un rol.
 #### `GET /`
 Lista las fincas. Soporta filtros por `provincia` y `canton`.
 
-**Auth:** cualquier token
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de fincas (puede ser vacía) |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `POST /`
 Crea una nueva finca.
 
-**Auth:** cualquier token
+**Auth:** cualquier token autenticado
 
 **Body:**
 ```json
@@ -654,28 +871,67 @@ Crea una nueva finca.
 }
 ```
 
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Finca creada exitosamente |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `422 Unprocessable Entity` | `nombre` faltante o `tenencia` con valor inválido |
+| `500 Internal Server Error` | Error al persistir |
+
 ---
 
 #### `GET /{finca_id}`
 Obtiene una finca por ID.
 
-**Auth:** cualquier token  
-**Respuesta 200:** `FincaOut` | **404** si no existe.
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Datos de la finca |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Finca no encontrada |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `PATCH /{finca_id}`
 Actualiza datos de la finca.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, TECNICO_CAMPO
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Finca actualizada |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, AUDITOR_EXTERNO) |
+| `404 Not Found` | Finca no encontrada |
+| `422 Unprocessable Entity` | `tenencia` con valor inválido |
+| `500 Internal Server Error` | Error al actualizar |
 
 ---
 
 #### `DELETE /{finca_id}`
 Elimina una finca.
 
-**Auth:** ADMIN  
-**Respuesta 200:** `{"message": "Finca eliminada correctamente"}`
+**Auth:** SUPER_ADMIN, TENANT_ADMIN
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | `{"message": "Finca eliminada correctamente"}` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso |
+| `404 Not Found` | Finca no encontrada |
+| `500 Internal Server Error` | Error al eliminar |
 
 ---
 
@@ -686,7 +942,16 @@ Elimina una finca.
 #### `GET /`
 Lista todas las auditorías.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO, AUDITOR_EXTERNO
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de auditorías |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, TECNICO_CAMPO) |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
@@ -697,7 +962,7 @@ Registra el resultado de una auditoría GEE. Al crear una auditoría:
 3. Se agrega un evento al historial de trazabilidad del expediente.
 4. `ejecutado_por` toma el valor del `sub` del token si no se especifica.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO
 
 **Body:**
 ```json
@@ -711,22 +976,50 @@ Registra el resultado de una auditoría GEE. Al crear una auditoría:
 }
 ```
 
-**Respuesta 201:** objeto `AuditoriaOut`  
-**404** si el expediente no existe.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Auditoría registrada, expediente actualizado, historial creado |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: AUDITOR_EXTERNO, CLIENTE) |
+| `404 Not Found` | Expediente no encontrado |
+| `422 Unprocessable Entity` | `resultado` fuera del enum o `expediente_id` faltante |
+| `500 Internal Server Error` | Error al crear la auditoría |
 
 ---
 
 #### `GET /expediente/{expediente_id}`
 Lista todas las auditorías de un expediente.
 
-**Auth:** cualquier token
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de auditorías del expediente |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Expediente no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `GET /{auditoria_id}`
 Obtiene una auditoría por ID.
 
-**Auth:** cualquier token
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Datos de la auditoría |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Auditoría no encontrada |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
@@ -737,7 +1030,16 @@ Obtiene una auditoría por ID.
 #### `GET /`
 Lista todos los certificados.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO, AUDITOR_EXTERNO
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de certificados |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: CLIENTE, TECNICO_CAMPO) |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
@@ -748,7 +1050,7 @@ Genera un certificado DDS. Reglas de negocio:
 3. El código se genera automáticamente: `DDS-{año}-{8 caracteres hex en mayúsculas}`.
 4. Se registra un evento en el historial del expediente.
 
-**Auth:** ADMIN, AUDITOR
+**Auth:** SUPER_ADMIN, TENANT_ADMIN, AUDITOR_INTERNO
 
 **Body:**
 ```json
@@ -759,31 +1061,68 @@ Genera un certificado DDS. Reglas de negocio:
 }
 ```
 
-**Respuesta 201:** objeto `CertificadoOut`  
-**400** si no existe auditoría APROBADA.  
-**404** si el expediente no existe.
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `201 Created` | Certificado generado con código `DDS-YYYY-XXXXXXXX` |
+| `400 Bad Request` | No existe auditoría GEE con resultado `APROBADO` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Rol sin permiso (ej: AUDITOR_EXTERNO, CLIENTE) |
+| `404 Not Found` | Expediente no encontrado |
+| `422 Unprocessable Entity` | `expediente_id` faltante o tipo de dato incorrecto |
+| `500 Internal Server Error` | Error al generar el certificado |
 
 ---
 
 #### `GET /expediente/{expediente_id}`
 Lista los certificados de un expediente.
 
-**Auth:** cualquier token
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Lista de certificados del expediente |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Expediente no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `GET /{certificado_id}`
 Obtiene un certificado por ID.
 
-**Auth:** cualquier token
+**Auth:** cualquier token autenticado
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Datos del certificado |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Sin token válido |
+| `404 Not Found` | Certificado no encontrado |
+| `500 Internal Server Error` | Error interno |
 
 ---
 
 #### `PATCH /{certificado_id}/revocar`
 Revoca un certificado (cambia estado a `REVOCADO`).
 
-**Auth:** ADMIN  
-**Respuesta 200:** objeto `CertificadoOut` con `estado = REVOCADO`
+**Auth:** SUPER_ADMIN, TENANT_ADMIN
+
+**Códigos de respuesta:**
+
+| Código | Descripción |
+|---|---|
+| `200 OK` | Certificado con `estado = REVOCADO` |
+| `401 Unauthorized` | Token ausente o inválido |
+| `403 Forbidden` | Solo SUPER_ADMIN y TENANT_ADMIN pueden revocar |
+| `404 Not Found` | Certificado no encontrado |
+| `500 Internal Server Error` | Error al revocar |
 
 ---
 
@@ -796,7 +1135,7 @@ Todos los valores deben enviarse en **MAYÚSCULAS**.
 | `GeneroEnum` | `MASCULINO`, `FEMENINO` |
 | `TenenciaEnum` | `PROPIA`, `POSESION`, `ARRENDAMIENTO` |
 | `EstadoEnum` (expediente) | `PENDIENTE`, `EN_PROCESO`, `APROBADO`, `RECHAZADO` |
-| `RolNombreEnum` | `ADMIN`, `AUDITOR`, `CLIENTE` |
+| `RolNombreEnum` | `SUPER_ADMIN`, `TENANT_ADMIN`, `CLIENTE`, `TECNICO_CAMPO`, `AUDITOR_INTERNO`, `AUDITOR_EXTERNO` |
 | `ResultadoAuditoriaEnum` | `APROBADO`, `RECHAZADO` |
 | `EstadoCertificadoEnum` | `VIGENTE`, `VENCIDO`, `REVOCADO` |
 
