@@ -126,6 +126,12 @@ check("GET agroambiental (CLIENTE) -> 200",        200, sc(requests.get(f"{BASE}
 check("GET resumen carbono (AUDITOR) -> 200",      200, sc(requests.get(f"{BASE}/api/v1/agroambiental/resumen/carbono", headers=H(AUD))))
 check("POST agroambiental (CLIENTE) -> 403",       403, sc(requests.post(f"{BASE}/api/v1/agroambiental/{exp_id}", json={}, headers=H(CLI))))
 
+# ── GENERO ENUM ──────────────────────────────────────────────
+print("\n====== GENERO ENUM ======")
+check("genero MASCULINO -> 201", 201, sc(requests.post(f"{BASE}/api/v1/expedientes/", json={"nombre_completo":"Test M","cedula_id":"1111111111","nombre_finca":"F1","genero":"MASCULINO"}, headers=H(ADM))))
+check("genero FEMENINO -> 201",  201, sc(requests.post(f"{BASE}/api/v1/expedientes/", json={"nombre_completo":"Test F","cedula_id":"2222222222","nombre_finca":"F2","genero":"FEMENINO"}, headers=H(ADM))))
+check("genero OTRO -> 422",      422, sc(requests.post(f"{BASE}/api/v1/expedientes/", json={"nombre_completo":"Test O","cedula_id":"3333333333","nombre_finca":"F3","genero":"OTRO"},      headers=H(ADM))))
+
 print(f"\n{'='*40}")
 print(f"  TOTAL: {PASS + FAIL}  |  PASS: {PASS}  |  FAIL: {FAIL}")
 print(f"{'='*40}")
