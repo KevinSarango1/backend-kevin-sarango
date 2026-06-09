@@ -15,7 +15,6 @@ class TenenciaEnum(str, Enum):
 class GeneroEnum(str, Enum):
     MASCULINO = "MASCULINO"
     FEMENINO = "FEMENINO"
-    OTRO = "OTRO"
 
 
 class EstadoEnum(str, Enum):

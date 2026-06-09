@@ -13,7 +13,6 @@ class TenenciaEnum(str, enum.Enum):
 class GeneroEnum(str, enum.Enum):
     MASCULINO = "MASCULINO"
     FEMENINO = "FEMENINO"
-    OTRO = "OTRO"
 
 
 class EstadoExpedienteEnum(str, enum.Enum):
