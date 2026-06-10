@@ -49,7 +49,7 @@ print("\n====== ROLES ======")
 # Limpiar rol previo si existe (aislamiento de tests)
 roles_existentes = requests.get(f"{BASE}/api/v1/roles/", headers=H(ADM)).json()
 for rol in roles_existentes:
-    if rol.get("nombre") == "AUDITOR":
+    if rol.get("nombre") == "AUDITOR_INTERNO":
         requests.delete(f"{BASE}/api/v1/roles/{rol['id']}", headers=H(ADM))
 r = requests.post(f"{BASE}/api/v1/roles/", json={"nombre": "AUDITOR_INTERNO", "descripcion": "Auditor GEE interno"}, headers=H(ADM))
 check("POST rol (ADMIN) -> 201",   201, sc(r))
