@@ -59,9 +59,22 @@ model Dato {
   total_stock_carbono    Float?
   creado_en              DateTime   @default(now())
 
-  expediente             Expediente @relation(fields: [expediente_id], references: [id], onDelete: Cascade)
+  expediente             Expediente       @relation(fields: [expediente_id], references: [id], onDelete: Cascade)
+  variables              VariableDinamica[]
 
   @@map("datos_agroambientales")
+}
+
+model VariableDinamica {
+  id        Int    @id @default(autoincrement())
+  dato_id   String
+  nombre    String
+  valor     String
+  tipo_dato String
+
+  dato      Dato   @relation(fields: [dato_id], references: [id], onDelete: Cascade)
+
+  @@map("variables_dinamicas")
 }
 
 model Historial {

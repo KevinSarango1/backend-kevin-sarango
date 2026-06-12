@@ -16,7 +16,7 @@ def obtener_datos(
 ):
     if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
-    return db.dato.find_many(where={"expediente_id": expediente_id})
+    return db.dato.find_many(where={"expediente_id": expediente_id}, include={"variables": True})
 
 
 @router.post("/{expediente_id}", response_model=DatoAgroambientalOut, status_code=201, summary="Agregar datos agroambientales")
@@ -28,14 +28,18 @@ def crear_datos(
 ):
     if not db.expediente.find_first(where={"id": expediente_id}):
         raise HTTPException(status_code=404, detail="Expediente no encontrado")
-    dato = db.dato.create(data={"expediente_id": expediente_id, **data.model_dump()})
+    variables = data.variables or []
+    dato_data = data.model_dump(exclude={"variables"})
+    dato = db.dato.create(data={"expediente_id": expediente_id, **dato_data})
+    for v in variables:
+        db.variabledinamica.create(data={"dato_id": dato.id, **v.model_dump()})
     db.historial.create(data={
         "expediente_id": expediente_id,
         "accion": "Datos agroambientales registrados",
-        "descripcion": "Se registraron índices de biodiversidad, uso de suelo y stock de carbono.",
+        "descripcion": f"Se registraron índices de biodiversidad, uso de suelo y stock de carbono. Variables dinámicas: {len(variables)}.",
         "usuario": current_user.get("sub", "sistema"),
     })
-    return dato
+    return db.dato.find_first(where={"id": dato.id}, include={"variables": True})
 
 
 @router.put("/{expediente_id}/{dato_id}", response_model=DatoAgroambientalOut, summary="Actualizar datos agroambientales")
@@ -49,7 +53,7 @@ def actualizar_datos(
     dato = db.dato.find_first(where={"id": dato_id, "expediente_id": expediente_id})
     if not dato:
         raise HTTPException(status_code=404, detail="Dato agroambiental no encontrado")
-    return db.dato.update(where={"id": dato_id}, data=data.model_dump(exclude_unset=True))
+    return db.dato.update(where={"id": dato_id}, data=data.model_dump(exclude_unset=True, exclude={"variables"}), include={"variables": True})
 
 
 @router.get("/resumen/carbono", summary="Resumen de stock de carbono por expediente")

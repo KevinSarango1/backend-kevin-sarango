@@ -44,6 +44,39 @@ class EstadoCertificadoEnum(str, Enum):
     REVOCADO = "REVOCADO"
 
 
+# ─── Variable Dinámica ───────────────────────────────────────
+
+class TipoDatoEnum(str, Enum):
+    STRING = "STRING"
+    INTEGER = "INTEGER"
+    FLOAT = "FLOAT"
+    BOOLEAN = "BOOLEAN"
+    DATE = "DATE"
+
+
+class VariableDinamicaCreate(BaseModel):
+    nombre: str = Field(..., example="pH del suelo")
+    valor: str = Field(..., example="6.5")
+    tipo_dato: TipoDatoEnum = Field(..., example="FLOAT")
+
+
+class VariableDinamicaUpdate(BaseModel):
+    nombre: Optional[str] = None
+    valor: Optional[str] = None
+    tipo_dato: Optional[TipoDatoEnum] = None
+
+
+class VariableDinamicaOut(BaseModel):
+    id: int
+    dato_id: str
+    nombre: str
+    valor: str
+    tipo_dato: str
+
+    class Config:
+        from_attributes = True
+
+
 # ─── Agroambiental ───────────────────────────────────────────
 
 class DatoAgroambientalBase(BaseModel):
@@ -60,13 +93,14 @@ class DatoAgroambientalBase(BaseModel):
 
 
 class DatoAgroambientalCreate(DatoAgroambientalBase):
-    pass
+    variables: Optional[List["VariableDinamicaCreate"]] = None
 
 
 class DatoAgroambientalOut(DatoAgroambientalBase):
     id: str
     expediente_id: str
     creado_en: datetime
+    variables: List["VariableDinamicaOut"] = []
 
     class Config:
         from_attributes = True

@@ -11,7 +11,7 @@ from app.schemas.schemas import (
 
 router = APIRouter()
 
-_INCLUDE = {"datos_agroambientales": True, "historial": True}
+_INCLUDE = {"datos_agroambientales": {"include": {"variables": True}}, "historial": True}
 
 
 def generar_eudr_id() -> str:
@@ -51,9 +51,24 @@ def crear_expediente(
             "usuario": current_user.get("sub", "sistema"),
         }]
     }
+    variables_pendientes = []
     if dato_nested:
-        create_data["datos_agroambientales"] = {"create": [dato_nested.model_dump()]}
-    return db.expediente.create(data=create_data, include=_INCLUDE)
+        dato_data = dato_nested.model_dump(exclude={"variables"})
+        create_data["datos_agroambientales"] = {"create": [dato_data]}
+        variables_pendientes = dato_nested.variables or []
+
+    expediente = db.expediente.create(data=create_data, include=_INCLUDE)
+
+    if variables_pendientes and expediente.datos_agroambientales:
+        dato_id = expediente.datos_agroambientales[0].id
+        for v in variables_pendientes:
+            db.variabledinamica.create(data={"dato_id": dato_id, **v.model_dump()})
+        return db.expediente.find_first(
+            where={"id": expediente.id},
+            include={"datos_agroambientales": {"include": {"variables": True}}, "historial": True},
+        )
+
+    return expediente
 
 
 @router.get("/eudr/{eudr_id}", response_model=ExpedienteOut, summary="Buscar por EUDR ID")
