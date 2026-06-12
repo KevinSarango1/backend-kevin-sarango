@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.database import db
-from app.routers import expedientes, agroambiental, usuarios, roles, fincas, auditoria, certificados
+from app.routers import expedientes, agroambiental, usuarios, roles, fincas, auditoria, certificados, variables
 
 
 @asynccontextmanager
@@ -34,6 +34,7 @@ app.include_router(roles.router,        prefix="/api/v1/roles",        tags=["Ro
 app.include_router(fincas.router,       prefix="/api/v1/fincas",       tags=["Fincas"])
 app.include_router(auditoria.router,    prefix="/api/v1/auditoria",    tags=["Auditoría GEE"])
 app.include_router(certificados.router, prefix="/api/v1/certificados", tags=["Certificados DDS"])
+app.include_router(variables.router,    prefix="/api/v1/variables",    tags=["Variables Dinámicas"])
 
 
 @app.get("/")
